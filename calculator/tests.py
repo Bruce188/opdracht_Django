@@ -113,6 +113,72 @@ class CalculatorViewTests(TestCase):
         self.assertTrue(response.context['form'].errors)
         self.assertEqual(Calculation.objects.count(), 0)
 
+    def test_invalid_interest_rate_exceeds_max(self):
+        """POST with interest_rate=1001 shows form errors, no DB record."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': 1000,
+            'interest_rate': 1001,
+            'years': 10,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.assertEqual(Calculation.objects.count(), 0)
+
+    def test_invalid_negative_interest_rate(self):
+        """POST with interest_rate=-1 shows form errors, no DB record."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': 1000,
+            'interest_rate': -1,
+            'years': 10,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('interest_rate', response.context['form'].errors)
+        self.assertEqual(Calculation.objects.count(), 0)
+
+    def test_invalid_post_result_is_none(self):
+        """POST with invalid data keeps result as None in context."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': -100,
+            'interest_rate': 5,
+            'years': 10,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context['result'])
+
+    def test_principal_min_boundary_accepted(self):
+        """POST with principal=0.01 (min boundary) succeeds."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': 0.01,
+            'interest_rate': 5,
+            'years': 1,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].errors)
+        self.assertIsNotNone(response.context['result'])
+        self.assertEqual(Calculation.objects.count(), 1)
+
+    def test_principal_zero_rejected(self):
+        """POST with principal=0.00 shows form errors, no DB record."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': 0.00,
+            'interest_rate': 5,
+            'years': 10,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.assertEqual(Calculation.objects.count(), 0)
+
+    def test_invalid_non_numeric_input(self):
+        """POST with non-numeric principal shows form errors, no DB record."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': 'abc',
+            'interest_rate': 5,
+            'years': 10,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.assertEqual(Calculation.objects.count(), 0)
+
 
 class CalculationModelTests(TestCase):
     def test_model_str(self):
