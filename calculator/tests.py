@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 from django.urls import reverse
 
@@ -180,9 +182,35 @@ class CalculatorViewTests(TestCase):
         self.assertEqual(Calculation.objects.count(), 0)
 
 
+    def test_overflow_result_rejected(self):
+        """Overflow guard rejects non-finite results with error, no DB record."""
+        with patch('calculator.views.math') as mock_math:
+            mock_math.isfinite.return_value = False
+            response = self.client.post(reverse('calculate'), {
+                'principal': 1000,
+                'interest_rate': 5,
+                'years': 10,
+            })
+        self.assertIsNone(response.context['result'])
+        self.assertIn(
+            'The result is too large to compute.',
+            response.context['form'].non_field_errors(),
+        )
+        self.assertEqual(Calculation.objects.count(), 0)
+
+    def test_form_accepts_max_boundaries(self):
+        """Form accepts exact max boundary values."""
+        form = CalculationForm(data={
+            'principal': 1_000_000_000,
+            'interest_rate': 1000,
+            'years': 100,
+        })
+        self.assertTrue(form.is_valid())
+
+
 class CalculationModelTests(TestCase):
     def test_model_str(self):
-        """Calculation.__str__ returns expected format."""
+        """Calculation.__str__ returns expected format after DB round-trip."""
         calc = Calculation.objects.create(
             principal=1000,
             interest_rate=5,
@@ -190,5 +218,7 @@ class CalculationModelTests(TestCase):
             future_value=1628.89,
             total_interest=628.89,
         )
+        # Re-fetch from DB to test with float representation
+        calc = Calculation.objects.get(pk=calc.pk)
         expected = "P=1000, r=5%, n=10 → A=1628.89"
         self.assertEqual(str(calc), expected)
