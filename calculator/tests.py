@@ -198,6 +198,37 @@ class CalculatorViewTests(TestCase):
         )
         self.assertEqual(Calculation.objects.count(), 0)
 
+    def test_overflow_with_real_inputs(self):
+        """Real computation producing inf triggers the overflow guard (no math mock)."""
+        # Form max_value constraints prevent inputs large enough to overflow,
+        # so we bypass form validation while letting the real computation in the
+        # view (including math.isfinite) run with extreme values.
+        extreme_data = {
+            'principal': 1e250,
+            'interest_rate': 1000,
+            'years': 100,
+        }
+        original_init = CalculationForm.__init__
+
+        def patched_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            self._errors = {}
+            self.cleaned_data = extreme_data
+
+        with patch.object(CalculationForm, '__init__', patched_init):
+            with patch.object(CalculationForm, 'is_valid', return_value=True):
+                response = self.client.post(reverse('calculate'), {
+                    'principal': 1000,
+                    'interest_rate': 5,
+                    'years': 1,
+                })
+        self.assertIsNone(response.context['result'])
+        self.assertIn(
+            'The result is too large to compute.',
+            response.context['form'].non_field_errors(),
+        )
+        self.assertEqual(Calculation.objects.count(), 0)
+
     def test_form_accepts_max_boundaries(self):
         """Form accepts exact max boundary values."""
         form = CalculationForm(data={
