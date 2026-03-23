@@ -181,7 +181,6 @@ class CalculatorViewTests(TestCase):
         self.assertTrue(response.context['form'].errors)
         self.assertEqual(Calculation.objects.count(), 0)
 
-
     def test_overflow_result_rejected(self):
         """Overflow guard rejects non-finite results with error, no DB record."""
         with patch('calculator.views.math') as mock_math:
@@ -238,6 +237,33 @@ class CalculatorViewTests(TestCase):
         })
         self.assertTrue(form.is_valid())
 
+    def test_nan_result_rejected(self):
+        """NaN result triggers the overflow guard with error, no DB record."""
+        with patch('calculator.views.math') as mock_math:
+            mock_math.isfinite.return_value = False
+            response = self.client.post(reverse('calculate'), {
+                'principal': 1000,
+                'interest_rate': 5,
+                'years': 10,
+            })
+        self.assertIsNone(response.context['result'])
+        self.assertIn(
+            'The result is too large to compute.',
+            response.context['form'].non_field_errors(),
+        )
+        self.assertEqual(Calculation.objects.count(), 0)
+
+    def test_principal_below_min_boundary_rejected(self):
+        """POST with principal=0.005 (below min_value=0.01) shows form errors, no DB record."""
+        response = self.client.post(reverse('calculate'), {
+            'principal': 0.005,
+            'interest_rate': 5,
+            'years': 1,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.assertEqual(Calculation.objects.count(), 0)
+
 
 class CalculationModelTests(TestCase):
     def test_model_str(self):
@@ -252,4 +278,17 @@ class CalculationModelTests(TestCase):
         # Re-fetch from DB to test with float representation
         calc = Calculation.objects.get(pk=calc.pk)
         expected = "P=1000, r=5%, n=10 → A=1628.89"
+        self.assertEqual(str(calc), expected)
+
+    def test_model_str_trailing_zeros(self):
+        """Calculation.__str__ with :g format strips trailing zeros."""
+        calc = Calculation.objects.create(
+            principal=1000.10,
+            interest_rate=5.00,
+            years=10,
+            future_value=1629.00,
+            total_interest=628.90,
+        )
+        calc = Calculation.objects.get(pk=calc.pk)
+        expected = "P=1000.1, r=5%, n=10 → A=1629"
         self.assertEqual(str(calc), expected)
