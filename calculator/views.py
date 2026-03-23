@@ -17,12 +17,13 @@ def calculate(request):
             years = form.cleaned_data['years']
 
             raw = principal * (1 + interest_rate / 100) ** years
-            future_value = round(raw, 2)
-            total_interest = round(future_value - principal, 2)
 
-            if not math.isfinite(future_value):
+            if not math.isfinite(raw):
                 form.add_error(None, 'The result is too large to compute.')
             else:
+                future_value = round(raw, 2)
+                total_interest = round(future_value - principal, 2)
+
                 Calculation.objects.create(
                     principal=principal,
                     interest_rate=interest_rate,
