@@ -1,0 +1,66 @@
+Deze opdracht heeft tot doel om inzicht te hebben in een Python gebaseerd web framework Django, door het MVT (Model-View-Template) concept toe te passen. Gelijkaardig zou men in diezelfde context een web framework Node.js kunnen gebruiken, bv. via IDE IntelliJ.
+
+
+
+In een eerste fase, dus voor deze Opdracht, is de database SQLite geschikt om dit Project op te leveren. Met de opgebouwde kennis kan dan een Cloud SQL database de SQLite db vervangen via bv. AWS of GCP.
+
+
+
+Deze opdracht is ofwel individueel, ofwel met maximaal 2 studenten (niet meer dan 2 aub, gezien dan een 0 score) met de volgende voorwaarden:
+
+
+
+De repo Commit(s) en Push naar GitHub is een absolute must.
+Wanneer de opdracht met 2 wordt uitgevoerd, wordt de main repo gedeeld door de 1ste student, en een "Fork" url (van de main) door de 2de student.
+
+
+Stappenplan:
+
+
+
+U past een formule toe, in een bedrijfseconomische, wetenschappelijke of socio-economische context.
+Minstens 2 variables als Input.
+Minstens 2 resultaten als Output.
+Zet deze formule om naar een Python script.
+Test de formule met een naar eigen keuze IDE (bv. PyCharm, VSC, ...)
+Bepaal de Directory structuur als voorbereiding voor het Django framework
+Converteer het Python Script naar the MVT logica (views.py)
+The UI: definieer de Template (voor MVT) wat de user als 'form' zal waarnemen in de browser
+Bereid de development environment voor in de IDE
+Maak een virtuele omgeving (bv. python -m venv myworld)
+Activeer de 'virtuel environment'
+Installeer Django
+Start een nieuw Project (bv. my_scientific_club)
+Run het Django Project
+Open uw browser met 127.0.0.1:8000
+Resultaat: "The install worked successfully")
+Creëer een App in het Project (bv. scientific_app)
+Vervolledig alle objecten en bestanden, waarbij u een AI (Code) Assistant gebruikt. Concreet betekent dit o.a. het vervolledigen van urls.py, view.py, models.py, settings.py (debug = True, allowed hosts, installed apps), bestanden onder 'templates'
+
+
+Dit stappenplan is de eerste fase van de Opdracht.
+
+
+
+Aanvullende info volgt nog in deze 'Opdracht', in combinatie met een "Walkthrough" tijdens de les(sen) aan de hand van demo's.
+
+
+
+Gevraagd (upload voor deze Opdracht):
+
+
+
+Full screen Screenshot uit de IDE van views.py, models.py, urls.py onder de app zelf.
+Full screen Screenshot van de web browser page waar de Input van 2 variables wordt gevraagd.
+Commit en Push naar GitHub waarvoor de voorwaarden in deze Opdracht zijn geïnformeerd.
+Vooraf de opgegeven deadline. Na de deadline wordt de Opdracht als '0' score beschouwd.
+
+
+
+
+Tussentijdse opleveringen kunnen in deze Opdracht (er zijn voldoende pogingen).
+
+
+
+
+

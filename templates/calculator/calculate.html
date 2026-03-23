@@ -1,0 +1,17 @@
+{% extends "calculator/base.html" %}
+
+{% block content %}
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Calculate</button>
+</form>
+
+{% if result %}
+<div class="results">
+    <h2>Results</h2>
+    <p>Future Value (A): <span>&euro; {{ result.future_value }}</span></p>
+    <p>Total Interest Earned (I): <span>&euro; {{ result.total_interest }}</span></p>
+</div>
+{% endif %}
+{% endblock %}
