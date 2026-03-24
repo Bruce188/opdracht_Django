@@ -10,4 +10,4 @@ class Calculation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"P={self.principal}, r={self.interest_rate}%, n={self.years} → A={self.future_value}"
+        return f"P={self.principal:g}, r={self.interest_rate:g}%, n={self.years} → A={self.future_value:g}"
