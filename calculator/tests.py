@@ -1,5 +1,7 @@
+import importlib
 from unittest.mock import patch
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 from django.urls import reverse
 
@@ -181,7 +183,7 @@ class CalculatorViewTests(TestCase):
         self.assertTrue(response.context['form'].errors)
         self.assertEqual(Calculation.objects.count(), 0)
 
-    def test_overflow_result_rejected(self):
+    def test_isfinite_guard(self):
         """Overflow guard rejects non-finite results with error, no DB record."""
         with patch('calculator.views.math') as mock_math:
             mock_math.isfinite.return_value = False
@@ -207,20 +209,17 @@ class CalculatorViewTests(TestCase):
             'interest_rate': 1000,
             'years': 100,
         }
-        original_init = CalculationForm.__init__
 
-        def patched_init(self, *args, **kwargs):
-            original_init(self, *args, **kwargs)
-            self._errors = {}
-            self.cleaned_data = extreme_data
+        def fake_is_valid(form_self):
+            form_self.cleaned_data = extreme_data
+            return True
 
-        with patch.object(CalculationForm, '__init__', patched_init):
-            with patch.object(CalculationForm, 'is_valid', return_value=True):
-                response = self.client.post(reverse('calculate'), {
-                    'principal': 1000,
-                    'interest_rate': 5,
-                    'years': 1,
-                })
+        with patch.object(CalculationForm, 'is_valid', fake_is_valid):
+            response = self.client.post(reverse('calculate'), {
+                'principal': 1000,
+                'interest_rate': 5,
+                'years': 1,
+            })
         self.assertIsNone(response.context['result'])
         self.assertIn(
             'The result is too large to compute.',
@@ -236,22 +235,6 @@ class CalculatorViewTests(TestCase):
             'years': 100,
         })
         self.assertTrue(form.is_valid())
-
-    def test_nan_result_rejected(self):
-        """NaN result triggers the overflow guard with error, no DB record."""
-        with patch('calculator.views.math') as mock_math:
-            mock_math.isfinite.return_value = False
-            response = self.client.post(reverse('calculate'), {
-                'principal': 1000,
-                'interest_rate': 5,
-                'years': 10,
-            })
-        self.assertIsNone(response.context['result'])
-        self.assertIn(
-            'The result is too large to compute.',
-            response.context['form'].non_field_errors(),
-        )
-        self.assertEqual(Calculation.objects.count(), 0)
 
     def test_principal_below_min_boundary_rejected(self):
         """POST with principal=0.005 (below min_value=0.01) shows form errors, no DB record."""
@@ -292,3 +275,82 @@ class CalculationModelTests(TestCase):
         calc = Calculation.objects.get(pk=calc.pk)
         expected = "P=1000.1, r=5%, n=10 → A=1629"
         self.assertEqual(str(calc), expected)
+
+    def test_model_str_scientific_notation(self):
+        """Calculation.__str__ uses scientific notation for extreme values via :g format."""
+        calc = Calculation.objects.create(
+            principal=1e16,
+            interest_rate=100,
+            years=50,
+            future_value=1e31,
+            total_interest=1e31,
+        )
+        calc = Calculation.objects.get(pk=calc.pk)
+        result = str(calc)
+        self.assertIn('e+', result.lower())
+
+
+class SettingsTests(TestCase):
+    def _reload_settings(self):
+        """Reload config.settings with load_dotenv disabled to isolate env vars."""
+        import config.settings as settings_module
+        with patch('dotenv.load_dotenv'):
+            importlib.reload(settings_module)
+        return settings_module
+
+    def _restore_settings(self):
+        """Restore config.settings to its original state."""
+        import config.settings as settings_module
+        importlib.reload(settings_module)
+
+    def test_secret_key_missing_in_production_raises(self):
+        """Missing DJANGO_SECRET_KEY with DEBUG=False raises ImproperlyConfigured."""
+        env = {
+            k: v for k, v in __import__('os').environ.items()
+            if k not in ('DJANGO_SECRET_KEY', 'DJANGO_DEBUG')
+        }
+        env['DJANGO_DEBUG'] = 'False'
+        with patch.dict('os.environ', env, clear=True):
+            with self.assertRaises(ImproperlyConfigured):
+                self._reload_settings()
+        self._restore_settings()
+
+    def test_debug_env_parsing(self):
+        """DEBUG setting correctly parses various env values."""
+        cases = {
+            'True': True,
+            '1': True,
+            'true': True,
+            'False': False,
+            '0': False,
+            'false': False,
+        }
+        for env_val, expected in cases.items():
+            with self.subTest(env_val=env_val):
+                with patch.dict('os.environ', {'DJANGO_DEBUG': env_val}):
+                    settings_module = self._reload_settings()
+                    self.assertEqual(settings_module.DEBUG, expected)
+        # Test absent (defaults to False)
+        env_no_debug = {
+            k: v for k, v in __import__('os').environ.items()
+            if k != 'DJANGO_DEBUG'
+        }
+        with patch.dict('os.environ', env_no_debug, clear=True):
+            settings_module = self._reload_settings()
+            self.assertFalse(settings_module.DEBUG)
+        self._restore_settings()
+
+    def test_allowed_hosts_parsing(self):
+        """ALLOWED_HOSTS correctly splits, strips, and filters empty values."""
+        cases = [
+            ('host1,,host2', ['host1', 'host2']),
+            ('', []),
+            (' host1 , host2 ', ['host1', 'host2']),
+            ('single', ['single']),
+        ]
+        for env_val, expected in cases:
+            with self.subTest(env_val=env_val):
+                with patch.dict('os.environ', {'DJANGO_ALLOWED_HOSTS': env_val}):
+                    settings_module = self._reload_settings()
+                    self.assertEqual(settings_module.ALLOWED_HOSTS, expected)
+        self._restore_settings()

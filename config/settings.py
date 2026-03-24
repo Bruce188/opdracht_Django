@@ -38,6 +38,7 @@ if not SECRET_KEY:
             from django.core.management.utils import get_random_secret_key
             SECRET_KEY = get_random_secret_key()
             _secret_file.write_text(SECRET_KEY)
+            _secret_file.chmod(0o600)
     else:
         from django.core.exceptions import ImproperlyConfigured
         raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set in production')
