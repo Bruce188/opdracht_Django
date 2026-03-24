@@ -16,7 +16,10 @@ def calculate(request):
             interest_rate = form.cleaned_data['interest_rate']
             years = form.cleaned_data['years']
 
-            raw = principal * (1 + interest_rate / 100) ** years
+            try:
+                raw = principal * (1 + interest_rate / 100) ** years
+            except OverflowError:
+                raw = float('inf')
 
             if not math.isfinite(raw):
                 form.add_error(None, 'The result is too large to compute.')

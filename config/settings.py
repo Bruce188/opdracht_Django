@@ -43,7 +43,8 @@ if not SECRET_KEY:
         from django.core.exceptions import ImproperlyConfigured
         raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set in production')
 
-ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+_default_hosts = 'localhost,127.0.0.1' if DEBUG else ''
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', _default_hosts).split(',') if h.strip()]
 
 
 # Application definition

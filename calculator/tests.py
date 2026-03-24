@@ -247,6 +247,32 @@ class CalculatorViewTests(TestCase):
         self.assertTrue(response.context['form'].errors)
         self.assertEqual(Calculation.objects.count(), 0)
 
+    def test_nan_result_rejected(self):
+        """NaN computation result triggers the overflow guard, no DB record."""
+        extreme_data = {
+            'principal': 1000,
+            'interest_rate': 5,
+            'years': 10,
+        }
+
+        def fake_is_valid(form_self):
+            form_self.cleaned_data = extreme_data
+            return True
+
+        with patch.object(CalculationForm, 'is_valid', fake_is_valid):
+            with patch('calculator.views.math.isfinite', return_value=False):
+                response = self.client.post(reverse('calculate'), {
+                    'principal': 1000,
+                    'interest_rate': 5,
+                    'years': 1,
+                })
+        self.assertIsNone(response.context['result'])
+        self.assertIn(
+            'The result is too large to compute.',
+            response.context['form'].non_field_errors(),
+        )
+        self.assertEqual(Calculation.objects.count(), 0)
+
 
 class CalculationModelTests(TestCase):
     def test_model_str(self):
@@ -291,6 +317,9 @@ class CalculationModelTests(TestCase):
 
 
 class SettingsTests(TestCase):
+    def setUp(self):
+        self.addCleanup(self._restore_settings)
+
     def _reload_settings(self):
         """Reload config.settings with load_dotenv disabled to isolate env vars."""
         import config.settings as settings_module
@@ -301,7 +330,8 @@ class SettingsTests(TestCase):
     def _restore_settings(self):
         """Restore config.settings to its original state."""
         import config.settings as settings_module
-        importlib.reload(settings_module)
+        with patch('dotenv.load_dotenv'):
+            importlib.reload(settings_module)
 
     def test_secret_key_missing_in_production_raises(self):
         """Missing DJANGO_SECRET_KEY with DEBUG=False raises ImproperlyConfigured."""
@@ -313,7 +343,6 @@ class SettingsTests(TestCase):
         with patch.dict('os.environ', env, clear=True):
             with self.assertRaises(ImproperlyConfigured):
                 self._reload_settings()
-        self._restore_settings()
 
     def test_debug_env_parsing(self):
         """DEBUG setting correctly parses various env values."""
@@ -338,7 +367,6 @@ class SettingsTests(TestCase):
         with patch.dict('os.environ', env_no_debug, clear=True):
             settings_module = self._reload_settings()
             self.assertFalse(settings_module.DEBUG)
-        self._restore_settings()
 
     def test_allowed_hosts_parsing(self):
         """ALLOWED_HOSTS correctly splits, strips, and filters empty values."""
@@ -350,7 +378,95 @@ class SettingsTests(TestCase):
         ]
         for env_val, expected in cases:
             with self.subTest(env_val=env_val):
-                with patch.dict('os.environ', {'DJANGO_ALLOWED_HOSTS': env_val}):
+                with patch.dict('os.environ', {'DJANGO_ALLOWED_HOSTS': env_val, 'DJANGO_DEBUG': 'True'}):
                     settings_module = self._reload_settings()
                     self.assertEqual(settings_module.ALLOWED_HOSTS, expected)
-        self._restore_settings()
+
+    def test_allowed_hosts_default(self):
+        """ALLOWED_HOSTS defaults to localhost,127.0.0.1 when env var is absent in debug mode."""
+        env = {
+            k: v for k, v in __import__('os').environ.items()
+            if k != 'DJANGO_ALLOWED_HOSTS'
+        }
+        env['DJANGO_DEBUG'] = 'True'
+        with patch.dict('os.environ', env, clear=True):
+            settings_module = self._reload_settings()
+            self.assertEqual(settings_module.ALLOWED_HOSTS, ['localhost', '127.0.0.1'])
+
+    def test_allowed_hosts_empty_in_production(self):
+        """ALLOWED_HOSTS defaults to empty list when env var is absent in production."""
+        env = {
+            k: v for k, v in __import__('os').environ.items()
+            if k not in ('DJANGO_ALLOWED_HOSTS', 'DJANGO_DEBUG')
+        }
+        env['DJANGO_DEBUG'] = 'False'
+        env['DJANGO_SECRET_KEY'] = 'test-key'
+        with patch.dict('os.environ', env, clear=True):
+            settings_module = self._reload_settings()
+            self.assertEqual(settings_module.ALLOWED_HOSTS, [])
+
+    def test_debug_mode_generates_secret_file(self):
+        """DEBUG mode generates .secret_key file with 0o600 permissions when no env key set."""
+        import os
+        import stat
+        from pathlib import Path
+
+        import config.settings as settings_module
+        secret_file = Path(settings_module.__file__).resolve().parent.parent / '.secret_key'
+
+        # Remove .secret_key if it exists, restore later
+        backup = None
+        if secret_file.exists():
+            backup = secret_file.read_text()
+            secret_file.unlink()
+
+        try:
+            env = {
+                k: v for k, v in os.environ.items()
+                if k != 'DJANGO_SECRET_KEY'
+            }
+            env['DJANGO_DEBUG'] = 'True'
+
+            with patch.dict('os.environ', env, clear=True):
+                settings_module = self._reload_settings()
+                self.assertTrue(len(settings_module.SECRET_KEY) > 0)
+                self.assertTrue(secret_file.exists())
+                file_mode = stat.S_IMODE(secret_file.stat().st_mode)
+                self.assertEqual(file_mode, 0o600)
+        finally:
+            if secret_file.exists():
+                secret_file.unlink()
+            if backup is not None:
+                secret_file.write_text(backup)
+
+    def test_debug_mode_reads_existing_secret_file(self):
+        """DEBUG mode reads existing .secret_key file instead of generating a new one."""
+        import os
+        from pathlib import Path
+
+        import config.settings as settings_module
+        secret_file = Path(settings_module.__file__).resolve().parent.parent / '.secret_key'
+
+        # Back up existing .secret_key if present
+        backup = None
+        if secret_file.exists():
+            backup = secret_file.read_text()
+
+        known_key = 'known-test-secret-key-value'
+        try:
+            secret_file.write_text(known_key)
+
+            env = {
+                k: v for k, v in os.environ.items()
+                if k != 'DJANGO_SECRET_KEY'
+            }
+            env['DJANGO_DEBUG'] = 'True'
+
+            with patch.dict('os.environ', env, clear=True):
+                settings_module = self._reload_settings()
+                self.assertEqual(settings_module.SECRET_KEY, known_key)
+        finally:
+            if secret_file.exists():
+                secret_file.unlink()
+            if backup is not None:
+                secret_file.write_text(backup)
